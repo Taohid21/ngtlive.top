@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NGT Television • Premium Quality</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      height: 100vh;
+      background: #0a0a0a;
+      color: #f1f1f1;
+      font-family: system-ui, sans-serif;
+      overflow: hidden;
+    }
+    .app { 
+      display: grid; 
+      grid-template-columns: 1fr 340px; 
+      height: 100vh; 
+    }
+    .player-section { 
+      background: #000; 
+      position: relative; 
+      display: flex; 
+      flex-direction: column; 
+    }
+    #player { 
+      flex: 1; 
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #mainVideo {
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+    }
+    .status-bar {
+      background: rgba(0,0,0,0.75);
+      padding: 12px 20px;
+      font-size: 0.95rem;
+      color: #ff2d55;
+      border-top: 1px solid #222;
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+    }
+    .status-text {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .search-container {
+      display: flex;
+      align-items: center;
+      max-width: 280px;
+      width: 100%;
+    }
+    .search-input {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 20px;
+      padding: 8px 15px;
+      color: #fff;
+      font-size: 0.85rem;
+      width: 100%;
+      outline: none;
+      transition: all 0.3s ease;
+    }
+    .search-input:focus {
+      border-color: #ff2d55;
+      background: rgba(255,255,255,0.15);
+      box-shadow: 0 0 0 2px rgba(255,45,85,0.2);
+    }
+    .search-input::placeholder {
+      color: rgba(255,255,255,0.6);
+    }
+    .channels-section {
+      background: #111;
+      overflow-y: auto;
+      padding: 1.2rem;
+      border-left: 1px solid #1a1a1a;
+    }
+    .channel-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    /* Default: responsive auto-fit (good for desktop/tablet) */
+    .channel-grid {
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    }
+
+    /* Mobile/Phone: FORCE exactly 3 columns per row */
+    @media (max-width: 767px) {
+      .channel-grid {
+        grid-template-columns: repeat(3, 1fr);  /* 3 ta kore thakbe phone-e */
+      }
+      .channel-card {
+        aspect-ratio: 9/14;  /* Slightly taller for better look in 3-col mobile */
+      }
+    }
+
+    .channel-card {
+      background: #1a1a1a;
+      border-radius: 10px;
+      overflow: hidden;
+      transition: all 0.28s ease;
+      cursor: pointer;
+      aspect-ratio: 9/13.5;
+      border: 2px solid transparent;
+      position: relative;
+    }
+    .channel-card:hover { 
+      transform: translateY(-5px); 
+      box-shadow: 0 14px 32px rgba(0,0,0,0.55); 
+    }
+    .channel-card.active,
+    .channel-card:focus { 
+      border-color: #ff2d55; 
+      box-shadow: 0 0 0 4px rgba(255,45,85,0.4); 
+      transform: scale(1.05); 
+    }
+    .channel-card img {
+      width: 100%;
+      height: 78%;
+      object-fit: cover;
+      display: block;
+      background: #111;
+    }
+    .channel-name {
+      padding: 8px 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      text-align: center;
+      line-height: 1.3;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.4), transparent);
+    }
+
+    /* Desktop layout */
+    @media (min-width: 1024px) {
+      .channel-grid {
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      }
+    }
+
+    /* Vertical mobile layout when player is on top */
+    @media (max-width: 1023px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .player-section { height: 42vh; }
+      .channels-section { border-left: none; border-top: 1px solid #222; }
+      .status-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .search-container {
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+  <div class="player-section">
+    <div id="player">
+      <video id="mainVideo" controls playsinline>
+        <p>Your browser doesn't support HTML5 video</p>
+      </video>
+    </div>
+    <div class="status-bar" id="status">
+      <div class="status-text" id="statusText">🎥 𝐍𝐆𝐓 Television</div>
+      <div class="search-container">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search movie...">
+      </div>
+    </div>
+  </div>
+
+  <div class="channels-section">
+    <div class="channel-grid" id="playlist"></div>
+  </div>
+</div>
+
+<script>
+// Your M3U link
+const M3U_URL = "https://raw.githubusercontent.com/nirob1520/NGTmovieBd/refs/heads/main/NGTmovie.m3u";
+
+let channels = [];
+let currentIndex = 0;
+let filteredChannels = [];
+
+const playlistEl = document.getElementById("playlist");
+const statusEl = document.getElementById("statusText");
+const mainVideo = document.getElementById("mainVideo");
+const searchInput = document.getElementById("searchInput");
+
+function initPlayer(url, name, card) {
+  // Update status
+  statusEl.textContent = `🎥 𝐍𝐆𝐓 𝐦𝐨𝐯𝐢𝐞 = ${name}`;
+  
+  // Mark channel as active
+  document.querySelectorAll('.channel-card').forEach(c => c.classList.remove('active'));
+  if (card) card.classList.add('active');
+  if (card) card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+
+  // Set video source
+  mainVideo.src = url;
+  mainVideo.load();
+  
+  // Try to play
+  mainVideo.play().catch(e => {
+    console.log("Autoplay blocked:", e);
+    statusEl.textContent = `🎥 𝐍𝐆𝐓 𝐦𝐨𝐯𝐢𝐞 = ${name} `;
+  });
+}
+
+function createChannelCard(channel, index) {
+  const card = document.createElement("div");
+  card.className = "channel-card";
+  card.tabIndex = 0;
+  card.dataset.name = channel.name.toLowerCase();
+
+  let logoSrc = channel.logo;
+  if (logoSrc && logoSrc.includes("image.tmdb.org")) {
+    logoSrc = logoSrc.replace("/original/", "/w342/").replace("/w500/", "/w342/");
+  }
+
+  const fallback = `https://via.placeholder.com/300x420/222/cccccc?text=${encodeURIComponent(channel.name.charAt(0).toUpperCase())}`;
+
+  card.innerHTML = `
+    <img 
+      src="${logoSrc || fallback}" 
+      alt="${channel.name}" 
+      loading="lazy" 
+      referrerpolicy="no-referrer" 
+      crossorigin="anonymous"
+      onerror="this.onerror=null; this.src='${fallback}'; this.style.objectFit='contain'; this.style.background='#1a1a1a';"
+    >
+    <div class="channel-name">${channel.name}</div>
+  `;
+
+  card.onclick = () => {
+    // Find the actual index in the original channels array
+    const actualIndex = channels.findIndex(c => c.name === channel.name);
+    if (actualIndex !== -1) {
+      currentIndex = actualIndex;
+      initPlayer(channel.url, channel.name, card);
+    } else {
+      initPlayer(channel.url, channel.name, card);
+    }
+  };
+
+  card.onkeydown = e => { if (e.key === "Enter") card.click(); };
+
+  return card;
+}
+
+function filterChannels(searchTerm) {
+  const term = searchTerm.toLowerCase().trim();
+  
+  if (term === "") {
+    // Show all channels if search is empty
+    playlistEl.innerHTML = '';
+    channels.forEach((ch, i) => {
+      const card = createChannelCard(ch, i);
+      playlistEl.appendChild(card);
+    });
+    return;
+  }
+  
+  // Filter channels based on search term
+  filteredChannels = channels.filter(ch => 
+    ch.name.toLowerCase().includes(term)
+  );
+  
+  // Update UI
+  playlistEl.innerHTML = '';
+  filteredChannels.forEach((ch, i) => {
+    const card = createChannelCard(ch, i);
+    playlistEl.appendChild(card);
+  });
+  
+  // Update status to show search results
+  if (filteredChannels.length === 0) {
+    statusEl.textContent = `No movies found for "${searchTerm}"`;
+  } else if (filteredChannels.length === 1) {
+    statusEl.textContent = `Found 1 movie for "${searchTerm}"`;
+  } else {
+    statusEl.textContent = `Found ${filteredChannels.length} movies for "${searchTerm}"`;
+  }
+}
+
+async function loadPlaylist() {
+  try {
+    const res = await fetch(M3U_URL);
+    const text = await res.text();
+    const lines = text.split('\n');
+    channels = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('#EXTINF')) {
+        const nameMatch = lines[i].match(/,(.+)/);
+        const logoMatch = lines[i].match(/tvg-logo="([^"]+)"/);
+
+        const name = nameMatch ? nameMatch[1].trim() : "Unknown";
+        let logo = logoMatch ? logoMatch[1].trim() : "";
+
+        const url = lines[i + 1]?.trim();
+
+        if (url?.startsWith('http')) {
+          channels.push({ name, logo, url });
+        }
+      }
+    }
+
+    // Initially show all channels
+    playlistEl.innerHTML = '';
+    channels.forEach((ch, i) => {
+      const card = createChannelCard(ch, i);
+      playlistEl.appendChild(card);
+    });
+
+    if (channels.length > 0) {
+      setTimeout(() => playlistEl.children[0]?.click(), 900);
+    } else {
+      statusEl.textContent = "No valid channels found in playlist";
+    }
+
+  } catch (err) {
+    statusEl.textContent = "Error loading playlist • " + err.message;
+    console.error(err);
+  }
+}
+
+// Handle video errors
+mainVideo.addEventListener('error', function(e) {
+  console.error("Video error:", mainVideo.error);
+  statusEl.textContent = "Video playback error • Try another channel";
+});
+
+// Setup search functionality
+searchInput.addEventListener('input', function(e) {
+  filterChannels(e.target.value);
+});
+
+// Clear search on Escape key
+searchInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    searchInput.value = '';
+    filterChannels('');
+    searchInput.blur();
+  }
+});
+
+window.onload = loadPlaylist;
+</script>
+</body>
+</html>
